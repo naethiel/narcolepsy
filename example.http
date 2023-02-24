@@ -1,0 +1,15 @@
+### Create user
+
+POST http://localhost:3000/user HTTP/1.1
+Content-Type: application/json
+Fake-Header: Tamer
+Foo:bar
+
+{
+	"foo": "bar"
+}
+
+
+### Read user
+
+GET http//foobar/user
