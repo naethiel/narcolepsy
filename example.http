@@ -21,3 +21,7 @@ GET http://foobar/user HTTP/1.1
 
 ### Some other
 POST http://foo/bar HTTP/1.1
+
+### swapi films
+
+GET https://swapi.dev/api/films/1/

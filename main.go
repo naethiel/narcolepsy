@@ -79,7 +79,7 @@ func fetch(ctx *cli.Context) error {
 	// now parse each raw request to build parsed requests ready to shoot
 	for _, r := range rawRequests {
 		log15.Debug("parsing request", "key", r.Key)
-		p, err := parseRequest(r)
+		p, err := parseRequestPayload(r)
 
 		if err != nil {
 			log15.Error("failed parsing request", "key", r.Key, "err", err)
@@ -97,16 +97,35 @@ func fetch(ctx *cli.Context) error {
 	}, &answer)
 
 	log15.Debug("chosen request", "req", answer)
+
+	var request *http.Request
+	for _, r := range parsed {
+		if r.Key == answer {
+			request = r.Definition
+			break
+		}
+	}
+
+	res, err := http.DefaultClient.Do(request.Clone(ctx.Context))
+	if err != nil {
+		log15.Error("sending request", "key", answer, "request", request, "err", err)
+		return err
+	}
+
+	fmt.Printf("request status: %s", res.Status)
+
 	return nil
 }
 
-func parseRequest(raw rawRequest) (parsedRequest, error) {
+func parseRequestPayload(raw rawRequest) (parsedRequest, error) {
 	content := bufio.NewReader(strings.NewReader(raw.Definition))
 	var err error
 	out := parsedRequest{
 		Key: raw.Key,
 	}
 	out.Definition, err = http.ReadRequest(content)
+	// unset RequestURI since it should not be set for outgoing requests
+	out.Definition.RequestURI = ""
 
 	return out, err
 }
@@ -142,6 +161,14 @@ type parsedRequest struct {
 	Definition *http.Request
 }
 
+const (
+	DEFAULT_METHOD       = "GET"
+	DEFAULT_PROTOCOL     = "HTTP/1.1"
+	COMMENT_PREFIX_SLASH = "// "
+	COMMENT_PREFIX_HASH  = "# "
+	SEPARATOR_PREFIX     = "### "
+)
+
 func getRawRequests(lines []string) []rawRequest {
 	var (
 		builtRequests []rawRequest
@@ -151,12 +178,12 @@ func getRawRequests(lines []string) []rawRequest {
 	for i := 0; i < len(lines); i++ {
 		l := lines[i]
 
-		if strings.HasPrefix(l, "// ") || strings.HasPrefix(l, "# ") {
+		if strings.HasPrefix(l, COMMENT_PREFIX_SLASH) || strings.HasPrefix(l, COMMENT_PREFIX_HASH) {
 			// skip comment lines
 			continue
 		}
 
-		if strings.HasPrefix(l, "### ") {
+		if strings.HasPrefix(l, SEPARATOR_PREFIX) {
 			// separator line means new request
 
 			// append previously built request to accumulated requests if there is one
@@ -166,7 +193,7 @@ func getRawRequests(lines []string) []rawRequest {
 
 			// spawn a clean new one
 			current = rawRequest{}
-			current.Key = strings.TrimPrefix(l, "### ")
+			current.Key = strings.TrimPrefix(l, SEPARATOR_PREFIX)
 			continue
 		}
 
@@ -180,13 +207,13 @@ func getRawRequests(lines []string) []rawRequest {
 
 	// sanitize trailing space on each request definition
 	for i, r := range builtRequests {
-		builtRequests[i].Definition = formatRawReq(r.Definition)
+		builtRequests[i].Definition = formatRequestDefinition(r.Definition)
 	}
 
 	return builtRequests
 }
 
-func formatRawReq(raw string) string {
+func formatRequestDefinition(raw string) string {
 	s := strings.TrimSpace(raw)
 
 	requestLine, rest, _ := strings.Cut(s, "\n")
@@ -206,11 +233,12 @@ func formatRawReq(raw string) string {
 		method, uri, proto = f[0], f[1], f[2]
 	}
 
+	// add default method and proto as necessary
 	if len(method) == 0 {
-		method = "GET"
+		method = DEFAULT_METHOD
 	}
 	if len(proto) == 0 {
-		proto = "HTTP/1.1"
+		proto = DEFAULT_PROTOCOL
 	}
 
 	newReqLine := fmt.Sprintf("%s %s %s", method, uri, proto)
