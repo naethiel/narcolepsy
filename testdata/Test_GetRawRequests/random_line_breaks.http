@@ -1,0 +1,13 @@
+
+# a comment
+
+// another comment
+
+
+### Separator
+
+
+
+GET http://google.com HTTP/1.1
+Fake-header:foo
+baz:bar

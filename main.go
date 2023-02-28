@@ -175,33 +175,58 @@ func getRawRequests(lines []string) []rawRequest {
 		current       rawRequest
 	)
 
-	for i := 0; i < len(lines); i++ {
-		l := lines[i]
+	state := "START"
 
-		if strings.HasPrefix(l, COMMENT_PREFIX_SLASH) || strings.HasPrefix(l, COMMENT_PREFIX_HASH) {
-			// skip comment lines
-			continue
-		}
+	for i := 0; i < len(lines); {
 
-		if strings.HasPrefix(l, SEPARATOR_PREFIX) {
-			// separator line means new request
+		rawLine := lines[i]
+		l := strings.TrimSpace(rawLine)
 
-			// append previously built request to accumulated requests if there is one
-			if len(current.Definition) != 0 {
-				builtRequests = append(builtRequests, current)
+		switch state {
+		case "START":
+			if len(l) == 0 || isComment(l) {
+				// skip blank lines
+				// skip comment lines
+				i++
+				continue
 			}
-
-			// spawn a clean new one
+			if isSep(l) {
+				state = "SEPARATOR"
+			}
+		case "SEPARATOR":
+			state = "BEFORE_REQUEST"
 			current = rawRequest{}
 			current.Key = strings.TrimPrefix(l, SEPARATOR_PREFIX)
-			continue
-		}
+			i++
+		case "BEFORE_REQUEST":
+			// as many blank lines and comments after a separator and before a request
+			if len(l) == 0 || isComment(l) {
+				i++
+				continue
+			}
+			state = "REQUEST"
+		case "REQUEST":
+			if isSep(l) {
+				// commit current then move on
+				builtRequests = append(builtRequests, current)
+				state = "SEPARATOR"
+				continue
+			}
 
-		current.Definition += l + "\n"
+			// skip
+			if isComment(l) {
+				i++
+				continue
+			}
+
+			// add current
+			current.Definition += rawLine + "\n"
+			i++
+		}
 	}
 
-	// push last built request in list
-	if len(current.Definition) != 0 {
+	// commit last built request
+	if len(current.Definition) > 0 {
 		builtRequests = append(builtRequests, current)
 	}
 
@@ -246,6 +271,14 @@ func formatRequestDefinition(raw string) string {
 	newDef := fmt.Sprintf("%s\n%s\n", newReqLine, rest)
 
 	return newDef
+}
+
+func isComment(line string) bool {
+	return strings.HasPrefix(line, COMMENT_PREFIX_SLASH) || strings.HasPrefix(line, COMMENT_PREFIX_HASH)
+}
+
+func isSep(line string) bool {
+	return strings.HasPrefix(line, SEPARATOR_PREFIX)
 }
 
 var allowedMethods = []string{
