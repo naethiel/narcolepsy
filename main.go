@@ -64,7 +64,7 @@ func fetch(ctx *cli.Context) error {
 
 	lines, err := readLines(path)
 	if err != nil {
-		log15.Error("Reading lines from file: %s. Err: %w", path, err)
+		log15.Error("Reading lines from file", "file", path, "err", err)
 		return fmt.Errorf("reading lines from file: %w", err)
 	}
 

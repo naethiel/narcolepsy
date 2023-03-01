@@ -1,0 +1,11 @@
+### missing method
+
+http://google.com HTTP/1.1
+Fake-header:foo
+baz:bar
+
+### missing proto
+
+PUT http://google.com
+Fake-header:foo
+baz:bar

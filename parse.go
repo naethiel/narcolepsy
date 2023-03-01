@@ -65,6 +65,13 @@ func getRequestsFromLines(lines []string) ([]parsedRequest, []string, error) {
 }
 
 func getRawRequests(lines []string) []rawRequest {
+	const (
+		STATE_START          = "START"
+		STATE_SEPARATOR      = "SEPARATOR"
+		STATE_BEFORE_REQUEST = "BEFORE_REQUEST"
+		STATE_REQUEST        = "REQUEST"
+	)
+
 	var (
 		builtRequests []rawRequest
 		current       rawRequest
@@ -78,7 +85,7 @@ func getRawRequests(lines []string) []rawRequest {
 		l := strings.TrimSpace(rawLine)
 
 		switch state {
-		case "START":
+		case STATE_START:
 			if len(l) == 0 || isComment(l) {
 				// skip blank lines
 				// skip comment lines
@@ -86,25 +93,25 @@ func getRawRequests(lines []string) []rawRequest {
 				continue
 			}
 			if isSep(l) {
-				state = "SEPARATOR"
+				state = STATE_SEPARATOR
 			}
-		case "SEPARATOR":
-			state = "BEFORE_REQUEST"
+		case STATE_SEPARATOR:
+			state = STATE_BEFORE_REQUEST
 			current = rawRequest{}
 			current.Key = strings.TrimPrefix(l, SEPARATOR_PREFIX)
 			i++
-		case "BEFORE_REQUEST":
+		case STATE_BEFORE_REQUEST:
 			// as many blank lines and comments after a separator and before a request
 			if len(l) == 0 || isComment(l) {
 				i++
 				continue
 			}
-			state = "REQUEST"
-		case "REQUEST":
+			state = STATE_REQUEST
+		case STATE_REQUEST:
 			if isSep(l) {
 				// commit current then move on
 				builtRequests = append(builtRequests, current)
-				state = "SEPARATOR"
+				state = STATE_SEPARATOR
 				continue
 			}
 
@@ -143,14 +150,16 @@ func formatRequestDefinition(raw string) string {
 
 	//if f has len 2 or 1, we have missing method and/or proto
 	switch len(f) {
+	case 3:
+		method, uri, proto = f[0], f[1], f[2]
 	case 2:
 		if slices.Contains(allowedMethods, f[0]) {
 			method, uri = f[0], f[1]
+		} else {
+			uri, proto = f[0], f[1]
 		}
 	case 1:
 		uri = f[0]
-	case 3:
-		method, uri, proto = f[0], f[1], f[2]
 	}
 
 	// add default method and proto as necessary

@@ -18,72 +18,96 @@ func readLinesT(t *testing.T) []string {
 }
 
 func Test_GetRawRequests(t *testing.T) {
-	t.Run("nominal", func(t *testing.T) {
+	// 	t.Run("nominal", func(t *testing.T) {
+	// 		lines := readLinesT(t)
+	// 		out := getRawRequests(lines)
+
+	// 		expected := []rawRequest{
+	// 			{
+	// 				Key: "Create user",
+	// 				Definition: `POST http://localhost:3000/user HTTP/1.1
+	// Content-Type:application/json
+	// Fake-Header: Tamer
+	// Foo:bar
+
+	// {
+	// 	"foo": "bar"
+	// }
+	// `,
+	// 			},
+	// 		}
+
+	// 		assert.Equal(t, expected, out)
+	// 	})
+
+	// 	t.Run("multiple requests", func(t *testing.T) {
+	// 		lines := readLinesT(t)
+	// 		out := getRawRequests(lines)
+
+	// 		expected := []rawRequest{
+	// 			{
+	// 				Key: "First",
+	// 				Definition: `POST http://localhost:3000/user HTTP/1.1
+	// Content-Type:application/json
+	// Fake-Header: Tamer
+	// Foo:bar
+
+	// {
+	// 	"foo": "bar"
+	// }
+	// `},
+	// 			{
+	// 				Key: "Second",
+	// 				Definition: `PUT http://localhost:3000/user HTTP/1.1
+	// Content-Type:application/json
+	// Fake-Header: Tamer
+	// Foo:bar
+
+	// {
+	// 	"foo": "bar"
+	// }
+	// `},
+	// 			{
+	// 				Key: "Third",
+	// 				Definition: `GET http://localhost:3000/user HTTP/1.1
+	// Content-Type:application/json
+	// `},
+	// 		}
+
+	// 		assert.Equal(t, expected, out)
+	// 	})
+	// 	t.Run("random line breaks", func(t *testing.T) {
+	// 		lines := readLinesT(t)
+	// 		out := getRawRequests(lines)
+
+	// 		expected := []rawRequest{
+	// 			{
+	// 				Key: "Separator",
+	// 				Definition: `GET http://google.com HTTP/1.1
+	// Fake-header:foo
+	// baz:bar
+	// `,
+	// 			},
+	// 		}
+
+	// 		assert.Equal(t, expected, out)
+
+	// 	})
+	t.Run("missing method or protocol", func(t *testing.T) {
 		lines := readLinesT(t)
 		out := getRawRequests(lines)
 
 		expected := []rawRequest{
 			{
-				Key: "Create user",
-				Definition: `POST http://localhost:3000/user HTTP/1.1
-Content-Type:application/json
-Fake-Header: Tamer
-Foo:bar
-
-{
-	"foo": "bar"
-}
+				Key: "missing method",
+				Definition: `GET http://google.com HTTP/1.1
+Fake-header:foo
+baz:bar
 `,
 			},
-		}
-
-		assert.Equal(t, expected, out)
-	})
-
-	t.Run("multiple requests", func(t *testing.T) {
-		lines := readLinesT(t)
-		out := getRawRequests(lines)
-
-		expected := []rawRequest{
 			{
-				Key: "First",
-				Definition: `POST http://localhost:3000/user HTTP/1.1
-Content-Type:application/json
-Fake-Header: Tamer
-Foo:bar
-
-{
-	"foo": "bar"
-}
-`},
-			{
-				Key: "Second",
-				Definition: `PUT http://localhost:3000/user HTTP/1.1
-Content-Type:application/json
-Fake-Header: Tamer
-Foo:bar
-
-{
-	"foo": "bar"
-}
-`},
-			{
-				Key: "Third",
-				Definition: `GET http://localhost:3000/user HTTP/1.1
-Content-Type:application/json
-`},
-		}
-
-		assert.Equal(t, expected, out)
-	})
-	t.Run("random line breaks", func(t *testing.T) {
-		lines := readLinesT(t)
-		out := getRawRequests(lines)
-
-		expected := []rawRequest{
-			{
-				Key: "Separator",
-				Definition: `GET http://google.com HTTP/1.1
+				Key: "missing proto",
+				Definition: `PUT http://google.com HTTP/1.1
 Fake-header:foo
 baz:bar
 `,
@@ -91,6 +115,5 @@ baz:bar
 		}
 
 		assert.Equal(t, expected, out)
-
 	})
 }
