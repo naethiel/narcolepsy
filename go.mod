@@ -1,4 +1,4 @@
-module github.com/naethiel/owl
+module github.com/naethiel/narcolepsy
 
 go 1.19
 
