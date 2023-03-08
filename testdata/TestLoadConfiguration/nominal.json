@@ -1,0 +1,10 @@
+{
+  "environments": {
+    "test": {
+      "token": "test-token"
+    },
+    "default": {
+      "token": "default-token"
+    }
+  }
+}

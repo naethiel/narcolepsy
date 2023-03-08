@@ -4,18 +4,18 @@ import (
 	"bufio"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 
-	"github.com/inconshreveable/log15"
 	"golang.org/x/exp/slices"
 )
 
-type rawRequest struct {
-	Key        string
-	Definition string
+type RequestDump struct {
+	Key   string
+	Value string
 }
 
-type parsedRequest struct {
+type Request struct {
 	Key        string
 	Definition *http.Request
 }
@@ -40,21 +40,19 @@ var allowedMethods = []string{
 	"TRACE",
 }
 
-func getRequestsFromLines(lines []string) ([]parsedRequest, []string, error) {
-	rawRequests := getRawRequests(lines)
+func getRequestsFromLines(env *Environment, lines []string) ([]Request, []string, error) {
+	rawDumps := getReqDumps(env, lines)
 
 	var (
-		parsed []parsedRequest
+		parsed []Request
 		keys   []string
 	)
 
-	for _, r := range rawRequests {
-		log15.Debug("parsing request", "key", r.Key)
-		p, err := parseRequestPayload(r)
+	for _, d := range rawDumps {
+		p, err := parseRequest(d)
 
 		if err != nil {
-			log15.Error("failed parsing request", "key", r.Key, "err", err)
-			return nil, nil, fmt.Errorf("parsing request %s: %w", r.Key, err)
+			return nil, nil, fmt.Errorf("parsing request %s: %w", d.Key, err)
 		}
 
 		parsed = append(parsed, p)
@@ -64,7 +62,7 @@ func getRequestsFromLines(lines []string) ([]parsedRequest, []string, error) {
 	return parsed, keys, nil
 }
 
-func getRawRequests(lines []string) []rawRequest {
+func getReqDumps(env *Environment, lines []string) []RequestDump {
 	const (
 		STATE_START          = "START"
 		STATE_SEPARATOR      = "SEPARATOR"
@@ -73,16 +71,16 @@ func getRawRequests(lines []string) []rawRequest {
 	)
 
 	var (
-		builtRequests []rawRequest
-		current       rawRequest
+		builtRequests []RequestDump
+		current       RequestDump
 	)
 
-	state := "START"
+	state := STATE_START
 
 	for i := 0; i < len(lines); {
-
 		rawLine := lines[i]
 		l := strings.TrimSpace(rawLine)
+		l = applyEnvVars(env, l)
 
 		switch state {
 		case STATE_START:
@@ -97,7 +95,7 @@ func getRawRequests(lines []string) []rawRequest {
 			}
 		case STATE_SEPARATOR:
 			state = STATE_BEFORE_REQUEST
-			current = rawRequest{}
+			current = RequestDump{}
 			current.Key = strings.TrimPrefix(l, SEPARATOR_PREFIX)
 			i++
 		case STATE_BEFORE_REQUEST:
@@ -122,19 +120,19 @@ func getRawRequests(lines []string) []rawRequest {
 			}
 
 			// add current
-			current.Definition += rawLine + "\n"
+			current.Value += rawLine + "\n"
 			i++
 		}
 	}
 
 	// commit last built request
-	if len(current.Definition) > 0 {
+	if len(current.Value) > 0 {
 		builtRequests = append(builtRequests, current)
 	}
 
 	// sanitize trailing space on each request definition
 	for i, r := range builtRequests {
-		builtRequests[i].Definition = formatRequestDefinition(r.Definition)
+		builtRequests[i].Value = formatRequestDefinition(r.Value)
 	}
 
 	return builtRequests
@@ -177,10 +175,10 @@ func formatRequestDefinition(raw string) string {
 	return newDef
 }
 
-func parseRequestPayload(raw rawRequest) (parsedRequest, error) {
-	content := bufio.NewReader(strings.NewReader(raw.Definition))
+func parseRequest(raw RequestDump) (Request, error) {
+	content := bufio.NewReader(strings.NewReader(raw.Value))
 	var err error
-	out := parsedRequest{
+	out := Request{
 		Key: raw.Key,
 	}
 	out.Definition, err = http.ReadRequest(content)
@@ -188,6 +186,25 @@ func parseRequestPayload(raw rawRequest) (parsedRequest, error) {
 	out.Definition.RequestURI = ""
 
 	return out, err
+}
+
+func applyEnvVars(env *Environment, s string) string {
+	// if there is no replacement to do, just fast exit
+	re := regexp.MustCompile(`\{(.*?)\}`)
+	hasReplacements := re.MatchString(s)
+	if !hasReplacements {
+		return s
+	}
+
+	newStr := s
+
+	// replace all keys in env with their respective values in current string
+	for key, repl := range *env {
+		pattern := "{" + key + "}"
+		newStr = strings.ReplaceAll(newStr, pattern, repl)
+	}
+
+	return newStr
 }
 
 func isComment(line string) bool {

@@ -7,12 +7,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httputil"
-	"os"
 
 	"github.com/alecthomas/chroma/quick"
 )
 
-func formatResponse(res *http.Response) error {
+func writeResponse(w io.Writer, res *http.Response) error {
 	defer res.Body.Close()
 	dump, err := httputil.DumpResponse(res, false)
 	if err != nil {
@@ -33,12 +32,12 @@ func formatResponse(res *http.Response) error {
 		}
 	}
 
-	err = quick.Highlight(os.Stdout, string(dump), "HTTP", "terminal16m", "dracula")
+	err = quick.Highlight(w, string(dump), "HTTP", "terminal16m", "dracula")
 	if err != nil {
-		return fmt.Errorf("printing request: %w", err)
+		return fmt.Errorf("printing response: %w", err)
 	}
 
-	err = quick.Highlight(os.Stdout, body.String(), "JSON", "terminal16m", "dracula")
+	err = quick.Highlight(w, body.String(), "JSON", "terminal16m", "dracula")
 	if err != nil {
 		return fmt.Errorf("printing response to stdout: %w", err)
 	}
