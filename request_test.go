@@ -120,6 +120,43 @@ baz:bar
 
 		assert.Equal(t, expected, out)
 	})
+	t.Run("no initial separator", func(t *testing.T) {
+		lines := readLinesT(t)
+		out := getReqDumps(envT, lines)
+
+		expected := []RequestDump{
+			{
+				// use first request line as key
+				Key: "POST http://localhost:3000/user HTTP/1.1",
+				Value: `POST http://localhost:3000/user HTTP/1.1
+Content-Type:application/json
+Fake-Header: Tamer
+Foo:bar
+
+{
+	"foo": "bar"
+}
+`},
+			{
+				Key: "Second",
+				Value: `PUT http://localhost:3000/user HTTP/1.1
+Content-Type:application/json
+Fake-Header: Tamer
+Foo:bar
+
+{
+	"foo": "bar"
+}
+`},
+			{
+				Key: "Third",
+				Value: `GET http://localhost:3000/user HTTP/1.1
+Content-Type:application/json
+`},
+		}
+
+		assert.Equal(t, expected, out)
+	})
 }
 
 func TestApplyEnvVars(t *testing.T) {

@@ -92,6 +92,10 @@ func getReqDumps(env *Environment, lines []string) []RequestDump {
 			}
 			if isSep(l) {
 				state = STATE_SEPARATOR
+			} else {
+				current = RequestDump{
+					Key: l}
+				state = STATE_REQUEST
 			}
 		case STATE_SEPARATOR:
 			state = STATE_BEFORE_REQUEST
