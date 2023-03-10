@@ -15,6 +15,7 @@ type Service struct {
 	configuration Configuration
 	env           Environment
 	filePath      string
+	request       string
 }
 
 func main() {
@@ -57,6 +58,12 @@ func main() {
 				Value:   "owl.json",
 				Aliases: []string{"c"},
 				Usage:   "path to the configuration file",
+			},
+			&cli.StringFlag{
+				Name:    "request",
+				Value:   "",
+				Aliases: []string{"r"},
+				Usage:   "name (without \"###\") of the request to run in the given file",
 			},
 		},
 	}
@@ -107,6 +114,7 @@ func (s *Service) bootstrap(ctx *cli.Context) error {
 	s.logger = logger
 	s.configuration = cfg
 	s.filePath = filePath
+	s.request = ctx.String("request")
 	s.env = env
 
 	return nil
@@ -125,23 +133,33 @@ func (s *Service) Fetch(ctx *cli.Context) error {
 
 	s.logger.Debug("lines read", "lines", lines)
 
-	requests, keys, err := getRequestsFromLines(&s.env, lines)
+	requests, keys, err := s.getRequestsFromLines(lines)
 
-	var answer string
-	err = survey.AskOne(&survey.Select{
-		Message: "Select request",
-		Options: keys,
-	}, &answer)
+	if s.request == "" {
+		err = survey.AskOne(&survey.Select{
+			Message: "Select request",
+			Options: keys,
+		}, &s.request)
 
-	s.logger.Debug("chosen request", "req", answer)
+		if err != nil {
+			return fmt.Errorf("selecting request interactively: %w", err)
+		}
+		s.logger.Debug("chosen request", "req", s.request)
+	}
 
 	var request *http.Request
 	for _, r := range requests {
-		if r.Key == answer {
+		if r.Key == s.request {
 			request = r.Definition
 			break
 		}
 	}
+
+	if request == nil {
+		return fmt.Errorf("no request defined for given string: %s", s.request)
+	}
+
+	s.logger.Debug("selected request", "payload", request)
 
 	res, err := http.DefaultClient.Do(request.Clone(ctx.Context))
 	if err != nil {

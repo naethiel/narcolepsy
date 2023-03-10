@@ -40,9 +40,8 @@ var allowedMethods = []string{
 	"TRACE",
 }
 
-func getRequestsFromLines(env *Environment, lines []string) ([]Request, []string, error) {
-	rawDumps := getReqDumps(env, lines)
-
+func (s Service) getRequestsFromLines(lines []string) ([]Request, []string, error) {
+	rawDumps := getReqDumps(&s.env, lines)
 	var (
 		parsed []Request
 		keys   []string
@@ -50,6 +49,7 @@ func getRequestsFromLines(env *Environment, lines []string) ([]Request, []string
 
 	for _, d := range rawDumps {
 		p, err := parseRequest(d)
+		s.logger.Debug("parsed request", "key", p.Key, "def", p.Definition)
 
 		if err != nil {
 			return nil, nil, fmt.Errorf("parsing request %s: %w", d.Key, err)
@@ -183,9 +183,14 @@ func parseRequest(raw RequestDump) (Request, error) {
 	content := bufio.NewReader(strings.NewReader(raw.Value))
 	var err error
 	out := Request{
-		Key: raw.Key,
+		Key:        raw.Key,
+		Definition: nil,
 	}
+
 	out.Definition, err = http.ReadRequest(content)
+	if err != nil {
+		return Request{}, err
+	}
 	// unset RequestURI since it should not be set for outgoing requests
 	out.Definition.RequestURI = ""
 
