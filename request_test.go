@@ -22,137 +22,68 @@ func readLinesT(t *testing.T) []string {
 }
 
 func Test_GetRawRequests(t *testing.T) {
-	t.Run("nominal", func(t *testing.T) {
-		lines := readLinesT(t)
-		out := getReqDumps(envT, lines)
-
-		expected := []RequestDump{
-			{
-				Key: "Create user",
-				Value: `POST http://localhost:3000/user HTTP/1.1
-Content-Type:application/json
-Fake-Header: Tamer
-Foo:bar
-
-{
-	"foo": "bar"
-}
-`,
-			},
-		}
-
-		assert.Equal(t, expected, out)
-	})
 
 	t.Run("multiple requests", func(t *testing.T) {
 		lines := readLinesT(t)
-		out := getReqDumps(envT, lines)
+		out := getRawRequests(envT, lines)
 
-		expected := []RequestDump{
-			{
-				Key: "First",
-				Value: `POST http://localhost:3000/user HTTP/1.1
+		expected := []string{
+			`### First
+
+POST http://localhost:3000/user HTTP/1.1
 Content-Type:application/json
 Fake-Header: Tamer
 Foo:bar
 
 {
 	"foo": "bar"
-}
-`},
-			{
-				Key: "Second",
-				Value: `PUT http://localhost:3000/user HTTP/1.1
+}`,
+			`### Second
+
+PUT http://localhost:3000/user HTTP/1.1
 Content-Type:application/json
 Fake-Header: Tamer
 Foo:bar
 
 {
 	"foo": "bar"
-}
-`},
-			{
-				Key: "Third",
-				Value: `GET http://localhost:3000/user HTTP/1.1
-Content-Type:application/json
-`},
-		}
+}`,
+			`### Third
 
-		assert.Equal(t, expected, out)
-	})
-	t.Run("random line breaks", func(t *testing.T) {
-		lines := readLinesT(t)
-		out := getReqDumps(envT, lines)
-
-		expected := []RequestDump{
-			{
-				Key: "Separator",
-				Value: `GET http://google.com HTTP/1.1
-Fake-header:foo
-baz:bar
-`,
-			},
-		}
-
-		assert.Equal(t, expected, out)
-
-	})
-	t.Run("missing method or protocol", func(t *testing.T) {
-		lines := readLinesT(t)
-		out := getReqDumps(envT, lines)
-
-		expected := []RequestDump{
-			{
-				Key: "missing method",
-				Value: `GET http://google.com HTTP/1.1
-Fake-header:foo
-baz:bar
-`,
-			},
-			{
-				Key: "missing proto",
-				Value: `PUT http://google.com HTTP/1.1
-Fake-header:foo
-baz:bar
-`,
-			},
+GET http://localhost:3000/user HTTP/1.1
+Content-Type:application/json`,
 		}
 
 		assert.Equal(t, expected, out)
 	})
 	t.Run("no initial separator", func(t *testing.T) {
 		lines := readLinesT(t)
-		out := getReqDumps(envT, lines)
+		out := getRawRequests(envT, lines)
 
-		expected := []RequestDump{
-			{
-				// use first request line as key
-				Key: "POST http://localhost:3000/user HTTP/1.1",
-				Value: `POST http://localhost:3000/user HTTP/1.1
+		expected := []string{
+			// use first request line as key
+			`POST http://localhost:3000/user HTTP/1.1
 Content-Type:application/json
 Fake-Header: Tamer
 Foo:bar
 
 {
 	"foo": "bar"
-}
-`},
-			{
-				Key: "Second",
-				Value: `PUT http://localhost:3000/user HTTP/1.1
+}`,
+			`### Second
+
+PUT http://localhost:3000/user HTTP/1.1
 Content-Type:application/json
 Fake-Header: Tamer
 Foo:bar
 
 {
 	"foo": "bar"
-}
-`},
-			{
-				Key: "Third",
-				Value: `GET http://localhost:3000/user HTTP/1.1
-Content-Type:application/json
-`},
+}`,
+			`### Third
+
+GET http://localhost:3000/user HTTP/1.1
+Content-Type:application/json`,
 		}
 
 		assert.Equal(t, expected, out)

@@ -131,9 +131,10 @@ func (s *Service) Fetch(ctx *cli.Context) error {
 		return fmt.Errorf("reading lines from file: %w", err)
 	}
 
-	s.logger.Debug("lines read", "lines", lines)
-
 	requests, keys, err := s.getRequestsFromLines(lines)
+	if err != nil {
+		return err
+	}
 
 	if s.request == "" {
 		err = survey.AskOne(&survey.Select{

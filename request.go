@@ -1,8 +1,8 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
 	"strings"
@@ -10,14 +10,21 @@ import (
 	"golang.org/x/exp/slices"
 )
 
-type RequestDump struct {
-	Key   string
-	Value string
-}
-
 type Request struct {
 	Key        string
 	Definition *http.Request
+}
+
+type RawRequest struct {
+	name    string
+	method  string
+	uri     string
+	proto   string
+	headers string
+	body    string
+	src     string
+	line    int
+	lines   []string
 }
 
 const (
@@ -41,127 +48,177 @@ var allowedMethods = []string{
 }
 
 func (s Service) getRequestsFromLines(lines []string) ([]Request, []string, error) {
-	rawDumps := getReqDumps(&s.env, lines)
-	var (
-		parsed []Request
-		keys   []string
-	)
+	rawDumps := getRawRequests(&s.env, lines)
+
+	parsed := make([]Request, 0, len(rawDumps))
+	keys := make([]string, 0, len(rawDumps))
 
 	for _, d := range rawDumps {
-		p, err := parseRequest(d)
-		s.logger.Debug("parsed request", "key", p.Key, "def", p.Definition)
+		s.logger.Debug("request dump found", "dump", d)
+		// apply env variables to raw request string
+		// before parsing it into an actual http Request object
+		d = applyEnvVars(&s.env, d)
+
+		// parse the request dump into an http request obj
+		req, key, err := readRequest(d)
+		s.logger.Debug("parsed request", "key", key, "req", req)
 
 		if err != nil {
-			return nil, nil, fmt.Errorf("parsing request %s: %w", d.Key, err)
+			return nil, nil, fmt.Errorf("parsing request: %w, dump: %s", err, d)
 		}
 
-		parsed = append(parsed, p)
-		keys = append(keys, p.Key)
+		parsed = append(parsed, Request{Key: key, Definition: req})
+		// collect keys separately to be able to match those with the --request flag later
+		keys = append(keys, key)
 	}
 
 	return parsed, keys, nil
 }
 
-func getReqDumps(env *Environment, lines []string) []RequestDump {
-	const (
-		STATE_START          = "START"
-		STATE_SEPARATOR      = "SEPARATOR"
-		STATE_BEFORE_REQUEST = "BEFORE_REQUEST"
-		STATE_REQUEST        = "REQUEST"
-	)
+func getRawRequests(env *Environment, lines []string) []string {
+	rawRequests := []string{}
+	builder := strings.Builder{}
 
-	var (
-		builtRequests []RequestDump
-		current       RequestDump
-	)
+	for _, l := range lines {
 
-	state := STATE_START
-
-	for i := 0; i < len(lines); {
-		rawLine := lines[i]
-		l := strings.TrimSpace(rawLine)
-		l = applyEnvVars(env, l)
-
-		switch state {
-		case STATE_START:
-			if len(l) == 0 || isComment(l) {
-				// skip blank lines
-				// skip comment lines
-				i++
-				continue
-			}
-			if isSep(l) {
-				state = STATE_SEPARATOR
-			} else {
-				current = RequestDump{
-					Key: l}
-				state = STATE_REQUEST
-			}
-		case STATE_SEPARATOR:
-			state = STATE_BEFORE_REQUEST
-			current = RequestDump{}
-			current.Key = strings.TrimPrefix(l, SEPARATOR_PREFIX)
-			i++
-		case STATE_BEFORE_REQUEST:
-			// as many blank lines and comments after a separator and before a request
-			if len(l) == 0 || isComment(l) {
-				i++
-				continue
-			}
-			state = STATE_REQUEST
-		case STATE_REQUEST:
-			if isSep(l) {
-				// commit current then move on
-				builtRequests = append(builtRequests, current)
-				state = STATE_SEPARATOR
-				continue
-			}
-
-			// skip
-			if isComment(l) {
-				i++
-				continue
-			}
-
-			// add current
-			current.Value += rawLine + "\n"
-			i++
+		if isComment(l) {
+			continue
 		}
+
+		if isSep(l) {
+			// push previously built string in acc
+			built := builder.String()
+			built = strings.TrimSpace(built)
+			if len(built) > 0 {
+				rawRequests = append(rawRequests, built)
+			}
+
+			// reset builder
+			builder.Reset()
+		}
+
+		builder.WriteString(l + "\n")
 	}
 
 	// commit last built request
-	if len(current.Value) > 0 {
-		builtRequests = append(builtRequests, current)
+	if builder.Len() > 0 {
+		built := builder.String()
+		built = strings.TrimSpace(built)
+		rawRequests = append(rawRequests, built)
 	}
 
-	// sanitize trailing space on each request definition
-	for i, r := range builtRequests {
-		builtRequests[i].Value = formatRequestDefinition(r.Value)
-	}
-
-	return builtRequests
+	return rawRequests
 }
 
-func formatRequestDefinition(raw string) string {
-	s := strings.TrimSpace(raw)
+type requestReader struct {
+	err        error
+	input      string
+	inputLines []string
+	line       int
+	name       string
+	method     string
+	uri        string
+	proto      string
+	headers    map[string]string
+	body       strings.Builder
+	state      string
+}
 
-	requestLine, rest, _ := strings.Cut(s, "\n")
+const (
+	STATE_START   = "START"
+	STATE_HEADERS = "HEADERS"
+	STATE_BODY    = "BODY"
+)
 
-	f := strings.Fields(requestLine)
+func (r *requestReader) ReadLine() {
+	if r.line >= len(r.inputLines) {
+		r.err = io.EOF
+		return
+	}
+
+	l := strings.TrimSpace(r.inputLines[r.line])
+
+	switch r.state {
+	case STATE_START:
+		if len(l) == 0 || isComment(l) {
+			r.line++
+			return
+		}
+
+		if isSep(l) {
+			r.name = strings.TrimPrefix(l, "### ")
+			r.line++
+			return
+		}
+
+		r.readRequestLine(l)
+		if len(r.name) == 0 {
+			r.name = l
+		}
+		r.state = STATE_HEADERS
+		r.line++
+	case STATE_HEADERS:
+		if isComment(l) {
+			r.line++
+			return
+		}
+
+		if len(l) == 0 {
+			r.line++
+			r.state = STATE_BODY
+			return
+		}
+
+		r.readHeaderLine(l)
+		r.line++
+	case STATE_BODY:
+		if isComment(l) {
+			r.line++
+			return
+		}
+
+		r.body.WriteString(l)
+		r.line++
+	}
+}
+
+func (r *requestReader) readHeaderLine(l string) {
+	if r.headers == nil {
+		r.headers = make(map[string]string)
+	}
+
+	key, value, ok := strings.Cut(l, ":")
+
+	if !ok {
+		r.err = fmt.Errorf("malformed header line: %s on line %d of request %s", l, r.line, r.name)
+		return
+	}
+
+	r.headers[key] = value
+
+	return
+
+}
+
+func (r *requestReader) readRequestLine(l string) {
+	fields := strings.Fields(l)
 	var method, uri, proto string
 
 	//if f has len 2 or 1, we have missing method and/or proto
-	switch len(f) {
+	switch len(fields) {
 	case 3:
-		method, uri, proto = f[0], f[1], f[2]
+		method, uri, proto = fields[0], fields[1], fields[2]
 	case 2:
-		if slices.Contains(allowedMethods, f[0]) {
-			method, uri = f[0], f[1]
+		if slices.Contains(allowedMethods, fields[0]) {
+			method, uri = fields[0], fields[1]
 		} else {
-			uri, proto = f[0], f[1]
+			uri, proto = fields[0], fields[1]
 		}
 	case 1:
-		uri = f[0]
+		uri = fields[0]
+	default:
+		r.err = fmt.Errorf("malformed request line: %s on line %d of request %s", l, r.line, r.name)
+		return
 	}
 
 	// add default method and proto as necessary
@@ -172,29 +229,47 @@ func formatRequestDefinition(raw string) string {
 		proto = DEFAULT_PROTOCOL
 	}
 
-	newReqLine := fmt.Sprintf("%s %s %s", method, uri, proto)
-
-	newDef := fmt.Sprintf("%s\n%s\n", newReqLine, rest)
-
-	return newDef
+	r.method = method
+	r.uri = uri
+	r.proto = proto
 }
 
-func parseRequest(raw RequestDump) (Request, error) {
-	content := bufio.NewReader(strings.NewReader(raw.Value))
-	var err error
-	out := Request{
-		Key:        raw.Key,
-		Definition: nil,
+func readRequest(raw string) (*http.Request, string, error) {
+	s := strings.TrimSpace(raw)
+
+	r := requestReader{
+		input:      s,
+		inputLines: strings.Split(s, "\n"),
+		line:       0,
+		state:      STATE_START,
 	}
 
-	out.Definition, err = http.ReadRequest(content)
+	for {
+		r.ReadLine()
+		if r.err != nil {
+			break
+		}
+	}
+
+	// eof is not an error we want to fail on
+	if r.err == io.EOF {
+		r.err = nil
+	}
+
+	if r.err != nil {
+		return nil, r.name, fmt.Errorf("reading request: %w", r.err)
+	}
+
+	req, err := http.NewRequest(r.method, r.uri, strings.NewReader(r.body.String()))
 	if err != nil {
-		return Request{}, err
+		return nil, r.name, fmt.Errorf("instantiating request: %w", err)
 	}
-	// unset RequestURI since it should not be set for outgoing requests
-	out.Definition.RequestURI = ""
 
-	return out, err
+	for key, val := range r.headers {
+		req.Header.Add(key, val)
+	}
+
+	return req, r.name, nil
 }
 
 func applyEnvVars(env *Environment, s string) string {
