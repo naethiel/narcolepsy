@@ -23,7 +23,7 @@ func main() {
 	var s Service
 
 	app := &cli.App{
-		Name:  "Owl HTTP rest client",
+		Name:  "Narcolepsy HTTP rest client",
 		Usage: "Send HTTP requests using .http or .rest files",
 		Action: func(ctx *cli.Context) error {
 			return s.Fetch(ctx)
@@ -34,7 +34,7 @@ func main() {
 				Email: "n.missika@outlook.com",
 			},
 		},
-		UsageText: "owl [options] [path/to/file]",
+		UsageText: "narc [options] [path/to/file]",
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
 				Name:    "verbose",
@@ -55,7 +55,7 @@ func main() {
 			},
 			&cli.StringFlag{
 				Name:    "configuration",
-				Value:   "owl.json",
+				Value:   "narcolepsy.json",
 				Aliases: []string{"c"},
 				Usage:   "path to the configuration file",
 			},
