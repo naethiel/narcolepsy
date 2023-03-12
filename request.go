@@ -47,11 +47,10 @@ var allowedMethods = []string{
 	"TRACE",
 }
 
-func (s Service) getRequestsFromLines(lines []string) ([]Request, []string, error) {
+func (s Service) getRequestsFromLines(lines []string) ([]Request, error) {
 	rawDumps := getRawRequests(&s.env, lines)
 
 	parsed := make([]Request, 0, len(rawDumps))
-	keys := make([]string, 0, len(rawDumps))
 
 	for _, d := range rawDumps {
 		s.logger.Debug("request dump found", "dump", d)
@@ -64,15 +63,13 @@ func (s Service) getRequestsFromLines(lines []string) ([]Request, []string, erro
 		s.logger.Debug("parsed request", "key", key, "req", req)
 
 		if err != nil {
-			return nil, nil, fmt.Errorf("parsing request: %w, dump: %s", err, d)
+			return nil, fmt.Errorf("parsing request: %w, dump: %s", err, d)
 		}
 
 		parsed = append(parsed, Request{Key: key, Definition: req})
-		// collect keys separately to be able to match those with the --request flag later
-		keys = append(keys, key)
 	}
 
-	return parsed, keys, nil
+	return parsed, nil
 }
 
 func getRawRequests(env *Environment, lines []string) []string {

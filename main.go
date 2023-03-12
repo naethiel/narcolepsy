@@ -131,36 +131,15 @@ func (s *Service) Fetch(ctx *cli.Context) error {
 		return fmt.Errorf("reading lines from file: %w", err)
 	}
 
-	requests, keys, err := s.getRequestsFromLines(lines)
+	requests, err := s.getRequestsFromLines(lines)
 	if err != nil {
 		return err
 	}
 
-	if s.request == "" {
-		err = survey.AskOne(&survey.Select{
-			Message: "Select request",
-			Options: keys,
-		}, &s.request)
-
-		if err != nil {
-			return fmt.Errorf("selecting request interactively: %w", err)
-		}
-		s.logger.Debug("chosen request", "req", s.request)
+	request, err := s.selectRequest(requests)
+	if err != nil {
+		return fmt.Errorf("selecting request to send: %w", err)
 	}
-
-	var request *http.Request
-	for _, r := range requests {
-		if r.Key == s.request {
-			request = r.Definition
-			break
-		}
-	}
-
-	if request == nil {
-		return fmt.Errorf("no request defined for given string: %s", s.request)
-	}
-
-	s.logger.Debug("selected request", "payload", request)
 
 	res, err := http.DefaultClient.Do(request.Clone(ctx.Context))
 	if err != nil {
@@ -174,4 +153,41 @@ func (s *Service) Fetch(ctx *cli.Context) error {
 
 	s.logger.Debug("Successfully output request. Done")
 	return nil
+}
+
+func (s Service) selectRequest(list []Request) (*http.Request, error) {
+	if len(list) == 1 {
+		return list[0].Definition, nil
+	}
+
+	var req *http.Request
+
+	if s.request == "" {
+		opts := make([]string, len(list))
+		for _, r := range list {
+			opts = append(opts, r.Key)
+		}
+		err := survey.AskOne(&survey.Select{
+			Message: "Select request",
+			Options: opts,
+		}, &s.request)
+
+		if err != nil {
+			return nil, fmt.Errorf("selecting request interactively: %w", err)
+		}
+		s.logger.Debug("chosen request", "req", s.request)
+	}
+
+	// pick the request targetted by s.request
+	for _, r := range list {
+		if r.Key == s.request {
+			req = r.Definition
+			break
+		}
+	}
+	if req == nil {
+		return nil, fmt.Errorf("no request defined for given string: %s", s.request)
+	}
+
+	return req, nil
 }
