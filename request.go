@@ -15,18 +15,6 @@ type Request struct {
 	Definition *http.Request
 }
 
-type RawRequest struct {
-	name    string
-	method  string
-	uri     string
-	proto   string
-	headers string
-	body    string
-	src     string
-	line    int
-	lines   []string
-}
-
 const (
 	DEFAULT_METHOD       = "GET"
 	DEFAULT_PROTOCOL     = "HTTP/1.1"
@@ -109,7 +97,6 @@ func getRawRequests(env *Environment, lines []string) []string {
 
 type requestReader struct {
 	err        error
-	input      string
 	inputLines []string
 	line       int
 	name       string
@@ -235,7 +222,6 @@ func readRequest(raw string) (*http.Request, string, error) {
 	s := strings.TrimSpace(raw)
 
 	r := requestReader{
-		input:      s,
 		inputLines: strings.Split(s, "\n"),
 		line:       0,
 		state:      STATE_START,
@@ -271,7 +257,7 @@ func readRequest(raw string) (*http.Request, string, error) {
 
 func applyEnvVars(env *Environment, s string) string {
 	// if there is no replacement to do, just fast exit
-	re := regexp.MustCompile(`\{(.*?)\}`)
+	re := regexp.MustCompile(`\{\{(.*?)\}\}`)
 	hasReplacements := re.MatchString(s)
 	if !hasReplacements {
 		return s
@@ -281,7 +267,7 @@ func applyEnvVars(env *Environment, s string) string {
 
 	// replace all keys in env with their respective values in current string
 	for key, repl := range *env {
-		pattern := "{" + key + "}"
+		pattern := "{{" + key + "}}"
 		newStr = strings.ReplaceAll(newStr, pattern, repl)
 	}
 

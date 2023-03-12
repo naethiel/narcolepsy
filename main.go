@@ -163,7 +163,7 @@ func (s Service) selectRequest(list []Request) (*http.Request, error) {
 	var req *http.Request
 
 	if s.request == "" {
-		opts := make([]string, len(list))
+		opts := make([]string, 0, len(list))
 		for _, r := range list {
 			opts = append(opts, r.Key)
 		}
