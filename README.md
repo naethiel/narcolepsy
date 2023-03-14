@@ -1,4 +1,4 @@
-# Narcolepsy: a simple file-baed CLI http client
+# Narcolepsy: a simple file-based CLI http client
 
 Narcolepsy is a terminal HTTP API client, drawing inspiration from Ain, insomnia and VSCode's "rest client" extension.
 
