@@ -131,7 +131,7 @@ func (s *Service) Fetch(ctx *cli.Context) error {
 		return fmt.Errorf("reading lines from file: %w", err)
 	}
 
-	requests, err := s.getRequestsFromLines(lines)
+	requests, err := s.readRequests(lines)
 	if err != nil {
 		return err
 	}

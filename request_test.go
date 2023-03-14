@@ -91,24 +91,24 @@ Content-Type:application/json`,
 }
 
 func TestApplyEnvVars(t *testing.T) {
-	env := &Environment{
+	env := Environment{
 		"darth-vader": "anakin-skywalker",
 		"C3PO":        "R2D2",
 	}
 	t.Run("nominal", func(t *testing.T) {
-		applied := applyEnvVars(env, "{darth-vader}: jedi")
+		applied := applyEnvVars(env, "{{darth-vader}}: jedi")
 		assert.Equal(t, "anakin-skywalker: jedi", applied)
 	})
 	t.Run("replace 2 things", func(t *testing.T) {
-		applied := applyEnvVars(env, "{darth-vader}:{C3PO}")
+		applied := applyEnvVars(env, "{{darth-vader}}:{{C3PO}}")
 		assert.Equal(t, "anakin-skywalker:R2D2", applied)
 	})
 	t.Run("unknown vars", func(t *testing.T) {
-		applied := applyEnvVars(env, "{foobar}: {2000}")
-		assert.Equal(t, "{foobar}: {2000}", applied)
+		applied := applyEnvVars(env, "{{foobar}}: {{2000}}")
+		assert.Equal(t, "{{foobar}}: {{2000}}", applied)
 	})
 	t.Run("bad syntax", func(t *testing.T) {
-		applied := applyEnvVars(env, "{darth-vader:{C3PO")
-		assert.Equal(t, "{darth-vader:{C3PO", applied)
+		applied := applyEnvVars(env, "{{darth-vader:{{C3PO")
+		assert.Equal(t, "{{darth-vader:{{C3PO", applied)
 	})
 }

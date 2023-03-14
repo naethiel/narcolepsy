@@ -35,7 +35,10 @@ var allowedMethods = []string{
 	"TRACE",
 }
 
-func (s Service) getRequestsFromLines(lines []string) ([]Request, error) {
+// readRequests reads from lines and returns a list of parsed Request objects
+// It also applies env variables to request text, replacing env keys with their corresponding values
+// before building each request.
+func (s Service) readRequests(lines []string) ([]Request, error) {
 	rawDumps := getRawRequests(&s.env, lines)
 
 	parsed := make([]Request, 0, len(rawDumps))
@@ -44,7 +47,7 @@ func (s Service) getRequestsFromLines(lines []string) ([]Request, error) {
 		s.logger.Debug("request dump found", "dump", d)
 		// apply env variables to raw request string
 		// before parsing it into an actual http Request object
-		d = applyEnvVars(&s.env, d)
+		d = applyEnvVars(s.env, d)
 
 		// parse the request dump into an http request obj
 		req, key, err := readRequest(d)
@@ -60,6 +63,9 @@ func (s Service) getRequestsFromLines(lines []string) ([]Request, error) {
 	return parsed, nil
 }
 
+// getRawRequests walks through lines and splits it into
+// a slice of strings, each string being the content separated between two ### separator lines
+// it does no other parsing
 func getRawRequests(env *Environment, lines []string) []string {
 	rawRequests := []string{}
 	builder := strings.Builder{}
@@ -95,17 +101,21 @@ func getRawRequests(env *Environment, lines []string) []string {
 	return rawRequests
 }
 
+// requestReader is a struct that can be used to parse a raw http request string
+// and build a raw request struct representation of it, to be used as parameters to build an actual http.Request for example
 type requestReader struct {
 	err        error
 	inputLines []string
 	line       int
-	name       string
-	method     string
-	uri        string
-	proto      string
-	headers    map[string]string
-	body       strings.Builder
 	state      string
+	output     struct {
+		name    string
+		method  string
+		uri     string
+		proto   string
+		headers map[string]string
+		body    strings.Builder
+	}
 }
 
 const (
@@ -130,14 +140,14 @@ func (r *requestReader) ReadLine() {
 		}
 
 		if isSep(l) {
-			r.name = strings.TrimPrefix(l, "### ")
+			r.output.name = strings.TrimPrefix(l, "### ")
 			r.line++
 			return
 		}
 
 		r.readRequestLine(l)
-		if len(r.name) == 0 {
-			r.name = l
+		if len(r.output.name) == 0 {
+			r.output.name = l
 		}
 		r.state = STATE_HEADERS
 		r.line++
@@ -161,24 +171,24 @@ func (r *requestReader) ReadLine() {
 			return
 		}
 
-		r.body.WriteString(l)
+		r.output.body.WriteString(l)
 		r.line++
 	}
 }
 
 func (r *requestReader) readHeaderLine(l string) {
-	if r.headers == nil {
-		r.headers = make(map[string]string)
+	if r.output.headers == nil {
+		r.output.headers = make(map[string]string)
 	}
 
 	key, value, ok := strings.Cut(l, ":")
 
 	if !ok {
-		r.err = fmt.Errorf("malformed header line: %s on line %d of request %s", l, r.line, r.name)
+		r.err = fmt.Errorf("malformed header line: %s on line %d of request %s", l, r.line, r.output.name)
 		return
 	}
 
-	r.headers[key] = value
+	r.output.headers[key] = value
 
 	return
 
@@ -201,7 +211,7 @@ func (r *requestReader) readRequestLine(l string) {
 	case 1:
 		uri = fields[0]
 	default:
-		r.err = fmt.Errorf("malformed request line: %s on line %d of request %s", l, r.line, r.name)
+		r.err = fmt.Errorf("malformed request line: %s on line %d of request %s", l, r.line, r.output.name)
 		return
 	}
 
@@ -213,11 +223,14 @@ func (r *requestReader) readRequestLine(l string) {
 		proto = DEFAULT_PROTOCOL
 	}
 
-	r.method = method
-	r.uri = uri
-	r.proto = proto
+	r.output.method = method
+	r.output.uri = uri
+	r.output.proto = proto
 }
 
+// readRequest takes a raw string containing an http request definition
+// and builds a *http.Request matching the specs found in raw
+// and returns it
 func readRequest(raw string) (*http.Request, string, error) {
 	s := strings.TrimSpace(raw)
 
@@ -240,22 +253,27 @@ func readRequest(raw string) (*http.Request, string, error) {
 	}
 
 	if r.err != nil {
-		return nil, r.name, fmt.Errorf("reading request: %w", r.err)
+		return nil, r.output.name, fmt.Errorf("reading request: %w", r.err)
 	}
 
-	req, err := http.NewRequest(r.method, r.uri, strings.NewReader(r.body.String()))
+	req, err := http.NewRequest(r.output.method, r.output.uri, strings.NewReader(r.output.body.String()))
 	if err != nil {
-		return nil, r.name, fmt.Errorf("instantiating request: %w", err)
+		return nil, r.output.name, fmt.Errorf("instantiating request: %w", err)
 	}
 
-	for key, val := range r.headers {
+	for key, val := range r.output.headers {
 		req.Header.Add(key, val)
 	}
 
-	return req, r.name, nil
+	return req, r.output.name, nil
 }
 
-func applyEnvVars(env *Environment, s string) string {
+// applyEnvVars will read from env and replace all variables in s
+// with the corresponding value found in env.
+// In s, variables are defined by surrounding {{ }}
+// It returns a new string with variables replaced by their values from env.
+// If a variable has no corresponding key in env, it is ignored.
+func applyEnvVars(env Environment, s string) string {
 	// if there is no replacement to do, just fast exit
 	re := regexp.MustCompile(`\{\{(.*?)\}\}`)
 	hasReplacements := re.MatchString(s)
@@ -266,7 +284,7 @@ func applyEnvVars(env *Environment, s string) string {
 	newStr := s
 
 	// replace all keys in env with their respective values in current string
-	for key, repl := range *env {
+	for key, repl := range env {
 		pattern := "{{" + key + "}}"
 		newStr = strings.ReplaceAll(newStr, pattern, repl)
 	}
@@ -274,10 +292,12 @@ func applyEnvVars(env *Environment, s string) string {
 	return newStr
 }
 
+// isComment returns wether line is a comment line (defined by either a // or a # prefix)
 func isComment(line string) bool {
 	return strings.HasPrefix(line, COMMENT_PREFIX_SLASH) || strings.HasPrefix(line, COMMENT_PREFIX_HASH)
 }
 
+// isSep returns wether line is a separator line (defined by a ### prefix)
 func isSep(line string) bool {
 	return strings.HasPrefix(line, SEPARATOR_PREFIX)
 }
