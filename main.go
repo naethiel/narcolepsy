@@ -14,7 +14,7 @@ type Service struct {
 	logger        log15.Logger
 	configuration Configuration
 	env           Environment
-	filePath      string
+	path          string
 	request       string
 }
 
@@ -76,12 +76,12 @@ func main() {
 	}
 }
 
-func (s *Service) bootstrap(ctx *cli.Context) error {
+func (s *Service) configure(ctx *cli.Context) error {
 	args := ctx.Args()
-	filePath := args.First()
+	path := args.First()
 	// if no path arg is provided, try to read the -config flag
-	if len(filePath) == 0 {
-		filePath = ctx.String("file")
+	if len(path) == 0 {
+		path = ctx.String("file")
 	}
 
 	// set log level properly
@@ -113,7 +113,7 @@ func (s *Service) bootstrap(ctx *cli.Context) error {
 	// assign newly configured service to global var
 	s.logger = logger
 	s.configuration = cfg
-	s.filePath = filePath
+	s.path = path
 	s.request = ctx.String("request")
 	s.env = env
 
@@ -121,12 +121,12 @@ func (s *Service) bootstrap(ctx *cli.Context) error {
 }
 
 func (s *Service) Fetch(ctx *cli.Context) error {
-	err := s.bootstrap(ctx)
+	err := s.configure(ctx)
 	if err != nil {
 		return fmt.Errorf("initializing service: %w", err)
 	}
 
-	lines, err := readLines(s.filePath)
+	lines, err := readLines(s.path)
 	if err != nil {
 		return fmt.Errorf("reading lines from file: %w", err)
 	}
