@@ -38,8 +38,13 @@ var allowedMethods = []string{
 // readRequests reads from lines and returns a list of parsed Request objects
 // It also applies env variables to request text, replacing env keys with their corresponding values
 // before building each request.
-func (s Service) readRequests(lines []string) ([]Request, error) {
-	rawDumps := getRawRequests(&s.env, lines)
+func (s Service) readRequests() ([]Request, error) {
+	lines, err := readLines(s.path)
+	if err != nil {
+		return nil, fmt.Errorf("reading lines from file: %w", err)
+	}
+
+	rawDumps := getRawRequests(s.env, lines)
 
 	parsed := make([]Request, 0, len(rawDumps))
 
@@ -66,7 +71,7 @@ func (s Service) readRequests(lines []string) ([]Request, error) {
 // getRawRequests walks through lines and splits it into
 // a slice of strings, each string being the content separated between two ### separator lines
 // it does no other parsing
-func getRawRequests(env *Environment, lines []string) []string {
+func getRawRequests(env Environment, lines []string) []string {
 	rawRequests := []string{}
 	builder := strings.Builder{}
 
@@ -131,17 +136,16 @@ func (r *requestReader) ReadLine() {
 	}
 
 	l := strings.TrimSpace(r.inputLines[r.line])
+	r.line++
 
 	switch r.state {
 	case STATE_START:
 		if len(l) == 0 || isComment(l) {
-			r.line++
 			return
 		}
 
 		if isSep(l) {
 			r.output.name = strings.TrimPrefix(l, "### ")
-			r.line++
 			return
 		}
 
@@ -150,29 +154,30 @@ func (r *requestReader) ReadLine() {
 			r.output.name = l
 		}
 		r.state = STATE_HEADERS
-		r.line++
 	case STATE_HEADERS:
 		if isComment(l) {
-			r.line++
 			return
 		}
 
 		if len(l) == 0 {
-			r.line++
 			r.state = STATE_BODY
 			return
 		}
 
 		r.readHeaderLine(l)
-		r.line++
 	case STATE_BODY:
 		if isComment(l) {
-			r.line++
 			return
 		}
 
 		r.output.body.WriteString(l)
-		r.line++
+	}
+	return
+}
+
+func (r *requestReader) back() {
+	if r.line > 0 {
+		r.line--
 	}
 }
 
@@ -184,6 +189,7 @@ func (r *requestReader) readHeaderLine(l string) {
 	key, value, ok := strings.Cut(l, ":")
 
 	if !ok {
+		r.back()
 		r.err = fmt.Errorf("malformed header line: %s on line %d of request %s", l, r.line, r.output.name)
 		return
 	}
@@ -211,6 +217,7 @@ func (r *requestReader) readRequestLine(l string) {
 	case 1:
 		uri = fields[0]
 	default:
+		r.back()
 		r.err = fmt.Errorf("malformed request line: %s on line %d of request %s", l, r.line, r.output.name)
 		return
 	}

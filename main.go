@@ -23,11 +23,9 @@ func main() {
 	var s Service
 
 	app := &cli.App{
-		Name:  "Narcolepsy HTTP rest client",
-		Usage: "Send HTTP requests using .http or .rest files",
-		Action: func(ctx *cli.Context) error {
-			return s.Fetch(ctx)
-		},
+		Name:   "Narcolepsy HTTP rest client",
+		Usage:  "Send HTTP requests using .http or .rest files",
+		Action: s.Fetch,
 		Authors: []*cli.Author{
 			{
 				Name:  "Nicolas Missika",
@@ -126,12 +124,7 @@ func (s *Service) Fetch(ctx *cli.Context) error {
 		return fmt.Errorf("initializing service: %w", err)
 	}
 
-	lines, err := readLines(s.path)
-	if err != nil {
-		return fmt.Errorf("reading lines from file: %w", err)
-	}
-
-	requests, err := s.readRequests(lines)
+	requests, err := s.readRequests()
 	if err != nil {
 		return err
 	}

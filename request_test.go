@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var envT = &Environment{
+var envT = Environment{
 	"foo": "bar",
 }
 
