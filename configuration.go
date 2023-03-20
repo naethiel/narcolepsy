@@ -12,7 +12,7 @@ type Configuration struct {
 	Environments map[string]Environment `json:"environments"`
 }
 
-var DEFAULT_CONFIG_FILE_PATH = "owl.json"
+var DEFAULT_CONFIG_FILE_PATH = "narcolepsy.json"
 
 var defaultConfig = Configuration{
 	Environments: map[string]Environment{
